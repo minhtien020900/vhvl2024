@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">My Application</string>
+    <string-array name="list_item">
+        <item>Mì cay</item>
+        <item>Mì cay 1</item>
+        <item>Mì cay 2</item>
+        <item>Mì cay 3</item>
+        <item>Mì cay 4</item>
+        <item>Mì cay 5</item>
+        <item>Mì cay 6</item>
+    </string-array>
+    <string name="title_activity_product_detail">ProductDetail</string>
+</resources>

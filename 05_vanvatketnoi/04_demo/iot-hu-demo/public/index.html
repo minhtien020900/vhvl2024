@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>IoT Hub Realtime Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 70%;
+            margin-bottom: 30px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #f4f4f4;
+        }
+
+        canvas {
+            max-width: 800px;
+            margin-bottom: 50px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Realtime IoT Hub Messages</h1>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Message ID</th>
+                <th>Device ID</th>
+                <th>Temperature (°C)</th>
+                <th>Humidity (%)</th>
+            </tr>
+        </thead>
+        <tbody id="messageTable"></tbody>
+    </table>
+
+    <canvas id="temperatureChart"></canvas>
+    <canvas id="humidityChart"></canvas>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:8080");
+        const tbody = document.getElementById("messageTable");
+
+        // Dữ liệu biểu đồ
+        const tempData = { labels: [], datasets: [{ label: "Temperature (°C)", data: [], borderColor: "red", fill: false }] };
+        const humData = { labels: [], datasets: [{ label: "Humidity (%)", data: [], borderColor: "blue", fill: false }] };
+
+        const tempChart = new Chart(document.getElementById("temperatureChart"), {
+            type: "line",
+            data: tempData,
+            options: { responsive: true, animation: false }
+        });
+
+        const humChart = new Chart(document.getElementById("humidityChart"), {
+            type: "line",
+            data: humData,
+            options: { responsive: true, animation: false }
+        });
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${data.messageId || ""}</td>
+                      <td>${data.deviceId || ""}</td>
+                      <td>${data.temperature || ""}</td>
+                      <td>${data.humidity || ""}</td>`;
+            tbody.appendChild(tr);
+
+            const maxPoints = 20;
+            if (tempData.labels.length >= maxPoints) {
+                tempData.labels.shift();
+                tempData.datasets[0].data.shift();
+                humData.labels.shift();
+                humData.datasets[0].data.shift();
+            }
+
+            const timestamp = new Date().toLocaleTimeString();
+            tempData.labels.push(timestamp);
+            tempData.datasets[0].data.push(data.temperature || 0);
+            humData.labels.push(timestamp);
+            humData.datasets[0].data.push(data.humidity || 0);
+
+            tempChart.update();
+            humChart.update();
+        };
+    </script>
+</body>
+
+</html>

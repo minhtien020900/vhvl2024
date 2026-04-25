@@ -1,0 +1,46 @@
+﻿{
+    "paragraphs": [
+        {
+            "text": "%pyspark\nprint(\"Xin chao. Minh ten la Le Huynh Hai Dai\")",
+            "user": "anonymous",
+            "dateUpdated": "2025-01-09T22:36:06+0700",
+            "config": {
+                "colWidth": 12,
+                "fontSize": 9,
+                "enabled": true,
+                "results": {},
+                "editorSetting": {
+                    "language": "scala",
+                    "editOnDblClick": false,
+                    "completionKey": "TAB",
+                    "completionSupport": true
+                },
+                "editorMode": "ace/mode/scala"
+            },
+            "settings": {
+                "params": {},
+                "forms": {}
+            },
+            "apps": [],
+            "jobName": "paragraph_1736435339781_814568795",
+            "id": "20250109-220859_950458082",
+            "dateCreated": "2025-01-09T22:08:59+0700",
+            "status": "READY",
+            "progressUpdateIntervalMs": 500,
+            "$$hashKey": "object:237"
+        }
+    ],
+    "name": "TTNT_1",
+    "id": "2KKY8EJDY",
+    "noteParams": {},
+    "noteForms": {},
+    "angularObjects": {
+        "spark:shared_process": []
+    },
+    "config": {
+        "isZeppelinNotebookCronEnable": false,
+        "looknfeel": "default",
+        "personalizedMode": "false"
+    },
+    "info": {}
+}

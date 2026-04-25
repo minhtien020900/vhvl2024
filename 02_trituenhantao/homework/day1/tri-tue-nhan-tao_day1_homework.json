@@ -1,0 +1,85 @@
+﻿{
+    "paragraphs": [
+        {
+            "text": "%pyspark\nprint(\"My name is MT\")",
+            "user": "anonymous",
+            "dateUpdated": "2025-01-15T23:10:17+0700",
+            "config": {
+                "colWidth": 12,
+                "fontSize": 9,
+                "enabled": true,
+                "results": {},
+                "editorSetting": {
+                    "language": "python",
+                    "editOnDblClick": false,
+                    "completionKey": "TAB",
+                    "completionSupport": true
+                },
+                "editorMode": "ace/mode/python"
+            },
+            "settings": {
+                "params": {},
+                "forms": {}
+            },
+            "results": {
+                "code": "SUCCESS",
+                "msg": [
+                    {
+                        "type": "TEXT",
+                        "data": "My name is MT\n"
+                    }
+                ]
+            },
+            "apps": [],
+            "jobName": "paragraph_1736957352361_1112056824",
+            "id": "20250115-230912_1100672298",
+            "dateCreated": "2025-01-15T23:09:12+0700",
+            "dateStarted": "2025-01-15T23:10:17+0700",
+            "dateFinished": "2025-01-15T23:10:36+0700",
+            "status": "FINISHED",
+            "progressUpdateIntervalMs": 500,
+            "focus": true,
+            "$$hashKey": "object:12651"
+        },
+        {
+            "user": "anonymous",
+            "config": {
+                "colWidth": 12,
+                "fontSize": 9,
+                "enabled": true,
+                "results": {},
+                "editorSetting": {
+                    "language": "scala",
+                    "editOnDblClick": false,
+                    "completionKey": "TAB",
+                    "completionSupport": true
+                },
+                "editorMode": "ace/mode/scala"
+            },
+            "settings": {
+                "params": {},
+                "forms": {}
+            },
+            "apps": [],
+            "jobName": "paragraph_1736957374334_316355487",
+            "id": "20250115-230934_1274552142",
+            "dateCreated": "2025-01-15T23:09:34+0700",
+            "status": "READY",
+            "progressUpdateIntervalMs": 500,
+            "$$hashKey": "object:12652"
+        }
+    ],
+    "name": "tri-tue-nhan-tao/day1/homework",
+    "id": "2KMC2DBB2",
+    "noteParams": {},
+    "noteForms": {},
+    "angularObjects": {
+        "spark:shared_process": []
+    },
+    "config": {
+        "isZeppelinNotebookCronEnable": false,
+        "looknfeel": "default",
+        "personalizedMode": "false"
+    },
+    "info": {}
+}

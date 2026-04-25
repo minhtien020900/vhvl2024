@@ -1,0 +1,350 @@
+import RPi.GPIO as GPIO
+import time
+import wave
+import numpy as np
+import os
+import Ports  # Proteus UART
+
+# ==== LCD Pinout ====
+LCD_RS = 25
+LCD_E  = 24
+LCD_D4 = 23
+LCD_D5 = 17
+LCD_D6 = 27
+LCD_D7 = 22
+
+# ==== Buttons & PWM ====
+BTN1_PIN = 5
+BTN2_PIN = 6
+BTN_STOP = 13   # đổi sang GPIO 13
+BTN_MODE = 16   # currently not used, can manually set mode
+PWM_BASS = 18
+PWM_MID  = 4
+PWM_TRE  = 13
+
+LCD_WIDTH = 16
+E_PULSE = 0.0005
+E_DELAY = 0.0005
+
+SONGS = ["music.wav", "sus-summer-fire-edm-226418.wav"]
+CHUNK = 512
+PRINT_INTERVAL = 0.2
+PWM_FREQ = 2000
+
+# ==== UART ====
+uart = Ports.UART()
+
+# ==== Globals ====
+pwm_bass = None
+pwm_mid = None
+pwm_tre = None
+stop_flag = False
+# Set mode manually here for testing
+mode = "BUTTON"  # "BUTTON" or "UART"
+
+# ==== GPIO Setup ====
+def gpio_setup():
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup([LCD_E, LCD_RS, LCD_D4, LCD_D5, LCD_D6, LCD_D7], GPIO.OUT, initial=GPIO.LOW)
+    GPIO.setup([PWM_BASS, PWM_MID, PWM_TRE], GPIO.OUT)
+    GPIO.setup([BTN1_PIN, BTN2_PIN, BTN_STOP, BTN_MODE], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+# ==== LCD Functions ====
+def lcd_toggle_enable():
+    GPIO.output(LCD_E, True)
+    time.sleep(E_PULSE)
+    GPIO.output(LCD_E, False)
+    time.sleep(E_DELAY)
+
+def lcd_byte(bits, mode_bit):
+    GPIO.output(LCD_RS, mode_bit)
+    GPIO.output(LCD_D4, bool(bits & 0x10))
+    GPIO.output(LCD_D5, bool(bits & 0x20))
+    GPIO.output(LCD_D6, bool(bits & 0x40))
+    GPIO.output(LCD_D7, bool(bits & 0x80))
+    lcd_toggle_enable()
+    low = (bits << 4) & 0xF0
+    GPIO.output(LCD_D4, bool(low & 0x10))
+    GPIO.output(LCD_D5, bool(low & 0x20))
+    GPIO.output(LCD_D6, bool(low & 0x40))
+    GPIO.output(LCD_D7, bool(low & 0x80))
+    lcd_toggle_enable()
+
+def lcd_init():
+    lcd_byte(0x33, False)
+    lcd_byte(0x32, False)
+    lcd_byte(0x28, False)
+    lcd_byte(0x0C, False)
+    lcd_byte(0x06, False)
+    lcd_clear()
+
+def lcd_clear():
+    lcd_byte(0x01, False)
+    time.sleep(E_DELAY)
+
+def lcd_message(message, line=0):
+    lcd_byte(0x80 if line == 0 else 0xC0, False)
+    message = message.ljust(LCD_WIDTH, " ")
+    for ch in message[:LCD_WIDTH]:
+        lcd_byte(ord(ch), True)
+
+# ==== Scroll generator ====
+def scroll_text(text, width=LCD_WIDTH):
+    text = text + "   "
+    while True:
+        for i in range(len(text)-width+1):
+            yield text[i:i+width]
+
+# ==== BUTTON Mode Playback with RMS ====
+def play_song(filename):
+    global stop_flag, pwm_bass, pwm_mid, pwm_tre
+    if not os.path.exists(filename):
+        lcd_clear()
+        lcd_message("File not found", 0)
+        time.sleep(1)
+        return
+
+    try:
+        wf = wave.open(filename, "rb")
+    except wave.Error:
+        lcd_clear()
+        lcd_message("Bad WAV file", 0)
+        time.sleep(1)
+        return
+
+    frame_rate = wf.getframerate()
+    channels = wf.getnchannels()
+    width = wf.getsampwidth()
+    chunk = CHUNK
+
+    lcd_clear()
+    name = os.path.splitext(os.path.basename(filename))[0]
+    lcd_message("Playing:", 0)
+    lcd_message(name[:LCD_WIDTH], 1)
+
+    last_print = 0.0
+    max_val = 2**(8*width-1) if width > 1 else 2**7
+    gain = 10  # LED gain
+
+    try:
+        while True:
+            if stop_flag:
+                break
+            data = wf.readframes(chunk)
+            if not data:
+                break
+
+            # convert audio to numpy
+            if width == 2:
+                samples = np.frombuffer(data, dtype=np.int16)
+            else:
+                samples = np.frombuffer(data, dtype=np.uint8).astype(np.int16)-128
+            if channels == 2:
+                try:
+                    samples = samples.reshape(-1,2).mean(axis=1)
+                except:
+                    samples = samples[:(len(samples)//2)*2].reshape(-1,2).mean(axis=1)
+
+            rms = np.sqrt(np.mean(np.square(samples.astype(np.float64))))
+            rms_norm = rms / max_val
+            rms_scaled = min(rms_norm * gain, 1.0)
+            duty_val = int(rms_scaled * 255)
+            duty = duty_val / 255.0 * 100
+
+            pwm_bass.ChangeDutyCycle(duty)
+            pwm_mid.ChangeDutyCycle(duty)
+            pwm_tre.ChangeDutyCycle(duty)
+
+            now = time.time()
+            if now - last_print >= PRINT_INTERVAL:
+                print(f"[DEBUG] RMS={rms:.1f}, Duty={duty_val}/255 ({duty:.1f})")
+                last_print = now
+
+            sleep_time = chunk / float(frame_rate)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+    finally:
+        wf.close()
+        pwm_bass.ChangeDutyCycle(0)
+        pwm_mid.ChangeDutyCycle(0)
+        pwm_tre.ChangeDutyCycle(0)
+        lcd_clear()
+        lcd_message("Stopped", 0)
+        time.sleep(0.5)
+
+# ==== MAIN ====
+def main():
+    global pwm_bass, pwm_mid, pwm_tre, stop_flag, mode
+
+    gpio_setup()
+    lcd_init()
+
+    # ==== Hiển thị ban đầu theo mode ====
+    if mode == "UART":
+        lcd_message("Waiting signal",0)
+        lcd_message("From Flask...",1)
+    elif mode == "BUTTON":
+        lcd_message(f"Btn1 {SONGS[0]}",0)
+        name2 = SONGS[1][:LCD_WIDTH] if len(SONGS[1])>LCD_WIDTH else SONGS[1]
+        lcd_message(f"Btn2 {name2}",1)
+	
+	
+    pwm_bass = GPIO.PWM(PWM_BASS, PWM_FREQ)
+    pwm_mid  = GPIO.PWM(PWM_MID, PWM_FREQ)
+    pwm_tre  = GPIO.PWM(PWM_TRE, PWM_FREQ)
+    pwm_bass.start(0)
+    pwm_mid.start(0)
+    pwm_tre.start(0)
+
+    scroll_gen_top = None
+    scroll_gen_bot = None
+    last_scroll = time.time()
+
+    playing = False
+    play_start_time = None
+    current_filename = ""
+    duration_sec = 0
+    last_second = -1
+    last_duty = [0,0,0]
+
+    try:
+        while True:
+            # ---- UART Mode ----
+            if mode == "UART":
+                data = uart.input()
+                if data:
+                    parts = data.strip().split("|")
+
+                    if parts[0] == "START":
+                        lcd_clear()
+                        lcd_message("System ready",0)
+                        lcd_message("Choose a file",1)
+                        playing=False
+                        current_filename=""
+                        play_start_time=None
+                        duration_sec=0
+                        last_second=-1
+                        scroll_gen_top=None
+                        scroll_gen_bot=None
+                        pwm_bass.ChangeDutyCycle(0)
+                        pwm_mid.ChangeDutyCycle(0)
+                        pwm_tre.ChangeDutyCycle(0)
+
+                    elif parts[0] == "STOP":
+                        playing=False
+                        lcd_clear()
+                        lcd_message("Stopped",0)
+                        pwm_bass.ChangeDutyCycle(0)
+                        pwm_mid.ChangeDutyCycle(0)
+                        pwm_tre.ChangeDutyCycle(0)
+
+                    elif parts[0] == "UPLOAD" and len(parts)>=3:
+                        filename = parts[1]
+                        duration_str = parts[2]
+                        try:
+                            mins, secs = map(int,duration_str.split(":"))
+                            duration_sec=mins*60+secs
+                        except:
+                            duration_sec=0
+                        lcd_clear()
+                        if len(filename)<=LCD_WIDTH:
+                            lcd_message(f"File: {filename}",0)
+                            lcd_message(f"Duration: {duration_str}",1)
+                            scroll_gen_top=None
+                            scroll_gen_bot=None
+                        else:
+                            scroll_gen_top = scroll_text("File: "+filename)
+                            scroll_gen_bot = scroll_text("Duration: "+duration_str)
+                            lcd_message(next(scroll_gen_top),0)
+                            lcd_message(next(scroll_gen_bot),1)
+                        playing=False
+                        current_filename=filename
+                        last_second=-1
+
+                    elif parts[0] == "PLAY" and len(parts)>=3:
+                        current_filename=parts[1]
+                        duration_str=parts[2]
+                        try:
+                            mins, secs=map(int,duration_str.split(":"))
+                            duration_sec=mins*60+secs
+                        except:
+                            duration_sec=0
+                        play_start_time=time.time()
+                        playing=True
+                        last_second=-1
+                        lcd_clear()
+                        if len("Playing: "+current_filename)<=LCD_WIDTH:
+                            lcd_message("Playing: "+current_filename,0)
+                            lcd_message("00:00",1)
+                            scroll_gen_top=None
+                        else:
+                            scroll_gen_top = scroll_text("Playing: "+current_filename)
+                            lcd_message(next(scroll_gen_top),0)
+                            lcd_message("00:00",1)
+
+                    elif parts[0] == "VOL" and len(parts)>=4:
+                        bass_val=int(parts[1])
+                        mid_val=int(parts[2])
+                        tre_val=int(parts[3])
+                        duties=[min((bass_val/255.0)*100,100),
+                                min((mid_val/255.0)*100,100),
+                                min((tre_val/255.0)*100,100)]
+                        pwm_bass.ChangeDutyCycle(duties[0])
+                        pwm_mid.ChangeDutyCycle(duties[1])
+                        pwm_tre.ChangeDutyCycle(duties[2])
+                        last_duty=duties.copy()
+
+            # ---- BUTTON Mode ----
+            elif mode == "BUTTON":
+                if GPIO.input(BTN1_PIN)==0:
+                    stop_flag=True
+                    time.sleep(0.1)
+                    stop_flag=False
+                    current_filename=SONGS[0]
+                    play_song(current_filename)
+                if GPIO.input(BTN2_PIN)==0:
+                    stop_flag=True
+                    time.sleep(0.1)
+                    stop_flag=False
+                    current_filename=SONGS[1]
+                    play_song(current_filename)
+                if GPIO.input(BTN_STOP)==0:   # logic mới cho GPIO13
+                    stop_flag=True
+                    pwm_bass.ChangeDutyCycle(0)
+                    pwm_mid.ChangeDutyCycle(0)
+                    pwm_tre.ChangeDutyCycle(0)
+                    lcd_clear()
+                    lcd_message("Stopped",0)
+                    time.sleep(0.2)
+
+            # ---- Update timer 1s and scroll 0.5s ----
+            if playing and play_start_time:
+                elapsed=int(time.time()-play_start_time)
+                if duration_sec>0 and elapsed>duration_sec:
+                    playing=False
+                    lcd_clear()
+                    lcd_message("Finished",0)
+                    pwm_bass.ChangeDutyCycle(0)
+                    pwm_mid.ChangeDutyCycle(0)
+                    pwm_tre.ChangeDutyCycle(0)
+                elif elapsed!=last_second:
+                    last_second=elapsed
+                    m,s=divmod(elapsed,60)
+                    lcd_message(f"{m:02d}:{s:02d}",1)
+
+            if scroll_gen_top and time.time()-last_scroll>0.5:
+                lcd_message(next(scroll_gen_top),0)
+                last_scroll=time.time()
+            #print(f"current mode {mode}")
+            #time.sleep(0.001)
+
+    finally:
+        stop_flag=True
+        pwm_bass.stop()
+        pwm_mid.stop()
+        pwm_tre.stop()
+        lcd_clear()
+        GPIO.cleanup()
+
+if __name__=="__main__":
+    main()
